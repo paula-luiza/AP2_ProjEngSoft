@@ -23,7 +23,7 @@ import seaborn as sns
 from sklearn.model_selection import train_test_split, KFold, cross_val_score
 from sklearn.preprocessing import StandardScaler
 from sklearn.pipeline import Pipeline
-from sklearn.linear_model import LinearRegression
+from sklearn.linear_model import RidgeCV
 from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 
@@ -69,9 +69,17 @@ print(f"Teste:  {X_test.shape[0]} repositórios")
 # %% [markdown]
 # ## 3. Definindo os modelos
 #
-# A Regressão Linear é sensível à escala das variáveis (ex: `commits_total`
-# vai até milhares, enquanto `cpp_ratio_pct` vai até 100). Por isso usamos
-# um `Pipeline` com `StandardScaler` antes dela.
+# **Regressão Linear (Ridge):** usamos `Ridge` em vez de `LinearRegression`
+# pura. Com 38 features para apenas 120 exemplos de treino — e algumas
+# features correlacionadas entre si — a Regressão Linear comum (OLS) fica
+# numericamente instável e pode gerar coeficientes e previsões absurdas.
+# `Ridge` adiciona um termo de regularização (penaliza coeficientes muito
+# grandes), o que resolve esse problema mantendo o modelo linear e
+# interpretável. `RidgeCV` escolhe automaticamente, via validação cruzada,
+# a força ideal dessa regularização (`alpha`).
+#
+# Como é sensível à escala das variáveis, usamos um `Pipeline` com
+# `StandardScaler` antes do Ridge.
 #
 # Random Forest e Gradient Boosting são baseados em árvores de decisão e
 # não são afetados pela escala das variáveis, então não precisam de scaler.
@@ -82,9 +90,9 @@ print(f"Teste:  {X_test.shape[0]} repositórios")
 
 # %%
 models = {
-    "Regressão Linear": Pipeline([
+    "Regressão Linear (Ridge)": Pipeline([
         ("scaler", StandardScaler()),
-        ("model", LinearRegression()),
+        ("model", RidgeCV(alphas=np.logspace(-2, 3, 20))),
     ]),
     "Random Forest": RandomForestRegressor(
         n_estimators=200, max_depth=6, random_state=RANDOM_STATE
@@ -227,20 +235,24 @@ plt.show()
 
 
 # %% [markdown]
-# ## 8. Coeficientes da Regressão Linear
+# ## 8. Coeficientes da Regressão Linear (Ridge)
 #
 # Diferente das árvores, a Regressão Linear tem coeficientes
 # interpretáveis diretamente: o sinal indica se a relação é positiva
 # ou negativa, e a magnitude (com dados padronizados) indica a força
-# da relação.
+# da relação. Com Ridge, os coeficientes ficam "encolhidos" (mais
+# próximos de zero) em comparação ao OLS puro — isso é esperado e é
+# o que garante a estabilidade do modelo.
 
 # %%
-linear_model = models["Regressão Linear"].named_steps["model"]
+linear_model = models["Regressão Linear (Ridge)"].named_steps["model"]
+print(f"Alpha escolhido pelo RidgeCV: {linear_model.alpha_:.4f}")
+
 coefs = pd.Series(linear_model.coef_, index=feature_cols).sort_values()
 
 fig, ax = plt.subplots(figsize=(8, 10))
 coefs.plot(kind="barh", ax=ax, color="seagreen")
-ax.set_title("Coeficientes da Regressão Linear (dados padronizados)")
+ax.set_title("Coeficientes da Regressão Linear / Ridge (dados padronizados)")
 ax.axvline(0, color="black", linewidth=0.8)
 plt.tight_layout()
 plt.savefig("figures/coeficientes_regressao_linear.png", dpi=120)

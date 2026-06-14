@@ -232,6 +232,49 @@ df["log_stars"] = np.log1p(df["stars"])
 
 
 # %% [markdown]
+# ### 7.4 Tratando outlier extremo via transformação logarítmica
+#
+# Ao investigar a instabilidade da Regressão Linear, identificamos que o
+# repositório **CleverRaven/Cataclysm-DDA** é um outlier extremo em várias
+# métricas simultaneamente — ele tem **283x** o `size_kb` mediano, **318x**
+# `contributors`, **159x** `commits_total` e **8.659x** `releases`. É um
+# projeto de escala muito maior que os demais (um dos maiores roguelikes
+# colaborativos open source).
+#
+# Esse tipo de distribuição de "cauda longa" é comum em métricas de
+# contagem de repositórios de software (commits, contribuidores, tamanho,
+# releases) e é a mesma razão pela qual aplicamos `log1p` em `stars`.
+# Aplicar a mesma transformação aqui:
+#
+# - reduz drasticamente a assimetria dessas variáveis (ex: `size_kb` tem
+#   assimetria 5.58, cai para -0.44 com log1p);
+# - faz com que o outlier deixe de "dominar" o `StandardScaler` e a
+#   Regressão Linear/Ridge;
+# - tende a deixar a relação com `log_stars` mais linear (relações do tipo
+#   "quanto mais commits, mais estrelas" costumam ser melhor descritas em
+#   escala log-log).
+#
+# Modelos baseados em árvore (Random Forest, Gradient Boosting) são
+# praticamente imunes a esse problema, mas aplicamos a transformação em
+# todos os modelos para manter a comparação justa (mesmo conjunto de
+# features para os três).
+
+# %%
+LOG_TRANSFORM_COLS = [
+    "size_kb", "commits_total", "contributors", "releases",
+    "open_issues", "closed_issues", "commits_per_day",
+    "commits_per_contributor", "issues_per_contributor", "releases_per_year",
+]
+
+print("Assimetria antes -> depois do log1p:")
+for col in LOG_TRANSFORM_COLS:
+    antes = df[col].skew()
+    df[col] = np.log1p(df[col])
+    depois = df[col].skew()
+    print(f"  {col:25s} {antes:7.2f} -> {depois:6.2f}")
+
+
+# %% [markdown]
 # ## 8. Definindo o conjunto final de features
 #
 # Reunindo todas as decisões:
@@ -239,8 +282,20 @@ df["log_stars"] = np.log1p(df["stars"])
 # - Remover colunas com data leakage (`watchers`, `forks`, e o próprio `stars`)
 # - Remover colunas quase constantes (`is_fork`)
 # - Remover colunas originais já substituídas (`license`, `license_grouped`, `topics`)
+# - Remover colunas que são **somas exatas** de outras colunas já presentes
+#
+# Sobre o último ponto: `bugs_total = bugs_open + bugs_closed` e
+# `total_issues = open_issues + closed_issues` são combinações lineares
+# exatas de outras features. Isso causa *multicolinearidade perfeita*,
+# que deixa modelos lineares (Regressão Linear/Ridge) numericamente
+# instáveis — os coeficientes podem "explodir" e gerar previsões absurdas.
+# Modelos baseados em árvore não são afetados, mas removemos essas colunas
+# de qualquer forma para manter o MESMO conjunto de features em todos os
+# modelos (comparação justa).
 
 # %%
+REDUNDANT_SUM_COLS = ["bugs_total", "total_issues"]
+
 ID_COLS = [
     "repo_id", "owner", "name", "full_name", "url",
     "description", "created_at", "pushed_at",
@@ -250,6 +305,7 @@ COLS_TO_DROP_FROM_FEATURES = (
     ID_COLS
     + LEAKAGE_COLS
     + NEAR_CONSTANT_COLS
+    + REDUNDANT_SUM_COLS
     + ["license", "license_grouped", "topics"]
     + ["stars"]  # variável original; usamos log_stars como alvo
 )

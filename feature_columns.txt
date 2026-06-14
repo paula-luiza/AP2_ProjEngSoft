@@ -9,12 +9,10 @@ ci_workflows
 has_wiki
 has_projects
 open_issues
-total_issues
 closed_issues
 issue_close_rate_pct
 bugs_open
 bugs_closed
-bugs_total
 bug_resolution_rate
 uses_bug_label
 age_days
