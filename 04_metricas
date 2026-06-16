@@ -1,0 +1,69 @@
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+# Configuração visual dos gráficos
+sns.set_theme(style="whitegrid")
+
+# 0. Carregando o dataset
+# Substitua pelo caminho correto se o arquivo estiver em outra pasta
+df = pd.read_csv("cpp_game_repos_clean.csv")
+
+# Vamos focar nas variáveis numéricas mais importantes que você tem no dataset
+metricas = ['stars', 'commits_total', 'contributors', 'age_days', 'size_kb']
+
+print("--- 1, 2 e 3: MEDIDAS DE TENDÊNCIA CENTRAL, DISPERSÃO E POSIÇÃO ---")
+# O pandas já possui um método maravilhoso chamado .describe() que traz quase tudo.
+# Vamos criar um DataFrame de resumo para ficar fácil de ler.
+resumo = pd.DataFrame()
+
+resumo['Média'] = df[metricas].mean()
+resumo['Mediana (Q2)'] = df[metricas].median()
+resumo['Moda'] = df[metricas].mode().iloc[0] # Pega o valor mais frequente
+resumo['Amplitude'] = df[metricas].max() - df[metricas].min()
+resumo['Variância'] = df[metricas].var()
+resumo['Desvio Padrão'] = df[metricas].std()
+resumo['Q1 (25%)'] = df[metricas].quantile(0.25)
+resumo['Q3 (75%)'] = df[metricas].quantile(0.75)
+
+# Opcional: Coeficiente de Variação (CV) = (Desvio Padrão / Média) * 100
+# Ajuda a ver qual variável varia mais proporcionalmente.
+resumo['CV (%)'] = (resumo['Desvio Padrão'] / resumo['Média']) * 100
+
+print(resumo.round(2).T)
+print("\n")
+
+
+# --- 4 e 5: GRÁFICOS E AVALIAÇÃO DE OUTLIERS ---
+
+# Vamos criar uma figura com múltiplos gráficos (Histogramas em cima, Boxplots embaixo)
+# Vou usar apenas duas variáveis de exemplo para o gráfico não ficar gigante: 'stars' e 'commits_total'
+vars_grafico = ['stars', 'commits_total']
+
+fig, axes = plt.subplots(2, 2, figsize=(14, 10))
+
+for i, var in enumerate(vars_grafico):
+    # HISTOGRAMA (Linha 0)
+    sns.histplot(df[var], bins=30, kde=True, ax=axes[0, i], color="steelblue")
+    axes[0, i].set_title(f'Histograma: {var}\n(Como os dados se distribuem)')
+    axes[0, i].set_ylabel('Frequência')
+    
+    # BOXPLOT (Linha 1)
+    sns.boxplot(x=df[var], ax=axes[1, i], color="darkorange")
+    axes[1, i].set_title(f'Boxplot: {var}\n(Pontos fora da "caixa" são outliers)')
+
+plt.tight_layout()
+plt.show()
+
+# 5.1 Identificando Outliers Matematicamente (Regra do IQR)
+print("--- IDENTIFICAÇÃO DE OUTLIERS (Regra IQR) ---")
+for var in metricas:
+    Q1 = df[var].quantile(0.25)
+    Q3 = df[var].quantile(0.75)
+    IQR = Q3 - Q1
+    limite_superior = Q3 + 1.5 * IQR
+    limite_inferior = Q1 - 1.5 * IQR
+    
+    outliers = df[(df[var] < limite_inferior) | (df[var] > limite_superior)]
+    print(f"{var}: {len(outliers)} outliers (Limites: < {limite_inferior:.2f} ou > {limite_superior:.2f})")

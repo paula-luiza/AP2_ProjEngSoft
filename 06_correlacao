@@ -1,0 +1,83 @@
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+from scipy import stats
+import statsmodels.api as sm
+
+# Configurações iniciais
+sns.set_theme(style="whitegrid")
+df = pd.read_csv("cpp_game_repos_clean.csv")
+
+# Garantindo que temos a variável log_stars (tratada contra outliers)
+if 'log_stars' not in df.columns:
+    df['log_stars'] = np.log1p(df['stars'])
+
+metricas = ['stars', 'commits_total', 'contributors', 'age_days', 'size_kb']
+
+print("\n" + "="*50)
+print("--- 6. TESTES DE NORMALIDADE ---")
+print("="*50)
+# A Hipótese Nula (H0) é: "Os dados seguem uma curva normal".
+# Se o p-valor for menor que 0.05, rejeitamos H0 (ou seja, os dados NÃO são normais).
+
+for var in metricas:
+    # 1. Shapiro-Wilk (Ideal para amostras menores, N < 5000)
+    stat_sw, p_sw = stats.shapiro(df[var].dropna())
+    
+    # 2. Kolmogorov-Smirnov (Compara com uma distribuição normal padrão)
+    # Precisamos padronizar os dados (Z-score) antes de aplicar o KS
+    dados_padronizados = (df[var].dropna() - df[var].mean()) / df[var].std()
+    stat_ks, p_ks = stats.kstest(dados_padronizados, 'norm')
+    
+    print(f"\nVariável: {var}")
+    print(f"  Shapiro-Wilk: p-value = {p_sw:.2e}")
+    print(f"  Kolmogorov-Smirnov: p-value = {p_ks:.2e}")
+    
+    if p_sw < 0.05:
+        print("  -> Conclusão: A distribuição NÃO é normal.")
+    else:
+        print("  -> Conclusão: A distribuição parece NORMAL.")
+
+
+print("\n" + "="*50)
+print("--- 7. MATRIZ DE CORRELAÇÃO ---")
+print("="*50)
+# Vamos calcular a correlação entre todas as métricas numéricas.
+# O método de Pearson mede a relação linear (se um sobe, o outro sobe proporcionalmente).
+
+plt.figure(figsize=(8, 6))
+matriz_correlacao = df[metricas + ['log_stars']].corr(method='spearman')
+# matriz_correlacao = df[metricas + ['log_stars']].corr(method='pearson')
+
+
+# Plotando o Mapa de Calor (Heatmap)
+sns.heatmap(matriz_correlacao, annot=True, cmap="coolwarm", fmt=".2f", vmin=-1, vmax=1)
+plt.title("Matriz de Correlação (Spearman)")
+plt.tight_layout()
+plt.show()
+
+print("\nAs variáveis que mais influenciam 'log_stars':")
+print(matriz_correlacao['log_stars'].sort_values(ascending=False).drop('log_stars'))
+
+
+print("\n" + "="*50)
+print("--- 8. MODELAGEM ESTATÍSTICA (REGRESSÃO LINEAR MÚLTIPLA) ---")
+print("="*50)
+# Vamos criar um modelo que tenta prever a popularidade (log_stars)
+# com base nas outras características do repositório.
+
+# Variáveis independentes (X)
+X = df[['commits_total', 'contributors', 'age_days', 'size_kb']]
+
+# O statsmodels exige que adicionemos uma constante (o "b" da equação da reta y = ax + b)
+X = sm.add_constant(X)
+
+# Variável dependente (y) - Usamos log_stars devido à assimetria original
+y = df['log_stars']
+
+# Ajuste do Modelo (OLS - Ordinary Least Squares / Mínimos Quadrados Ordinários)
+modelo = sm.OLS(y, X).fit()
+
+# Exibindo o sumário estatístico completo
+print(modelo.summary())

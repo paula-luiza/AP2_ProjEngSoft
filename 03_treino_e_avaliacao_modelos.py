@@ -4,10 +4,11 @@
 # Pré-requisito: rodar antes o script `02_limpeza_e_feature_engineering.py`,
 # que gera os arquivos `cpp_game_repos_clean.csv` e `feature_columns.txt`.
 #
-# Modelos comparados:
-# - **Regressão Linear** (baseline)
-# - **Random Forest**
-# - **Gradient Boosting**
+# Modelos comparados (em ordem crescente de complexidade):
+# - **Regressão Linear (Ridge)** — baseline linear
+# - **Árvore de Decisão** — modelo único, totalmente interpretável/visualizável
+# - **Random Forest** — ensemble de muitas árvores (bagging)
+# - **Gradient Boosting** — ensemble sequencial (boosting)
 #
 # Métricas: RMSE, MAE e R² — calculadas tanto em escala `log(stars)`
 # (escala usada no treino) quanto convertidas para "estrelas reais"
@@ -24,6 +25,7 @@ from sklearn.model_selection import train_test_split, KFold, cross_val_score
 from sklearn.preprocessing import StandardScaler
 from sklearn.pipeline import Pipeline
 from sklearn.linear_model import RidgeCV
+from sklearn.tree import DecisionTreeRegressor, plot_tree
 from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 
@@ -70,7 +72,7 @@ print(f"Teste:  {X_test.shape[0]} repositórios")
 # ## 3. Definindo os modelos
 #
 # **Regressão Linear (Ridge):** usamos `Ridge` em vez de `LinearRegression`
-# pura. Com 38 features para apenas 120 exemplos de treino — e algumas
+# pura. Com 36 features para apenas 120 exemplos de treino — e algumas
 # features correlacionadas entre si — a Regressão Linear comum (OLS) fica
 # numericamente instável e pode gerar coeficientes e previsões absurdas.
 # `Ridge` adiciona um termo de regularização (penaliza coeficientes muito
@@ -81,10 +83,17 @@ print(f"Teste:  {X_test.shape[0]} repositórios")
 # Como é sensível à escala das variáveis, usamos um `Pipeline` com
 # `StandardScaler` antes do Ridge.
 #
+# **Árvore de Decisão:** modelo único, sem regularização por ensemble.
+# Limitamos `max_depth=4` para (a) evitar overfitting em um dataset pequeno
+# e (b) manter a árvore pequena o suficiente para ser **visualizada** —
+# uma árvore muito profunda fica ilegível e tende a apenas memorizar o
+# treino. Serve como ponte entre o modelo linear (Ridge) e os ensembles
+# baseados em árvore (Random Forest e Gradient Boosting).
+#
 # Random Forest e Gradient Boosting são baseados em árvores de decisão e
 # não são afetados pela escala das variáveis, então não precisam de scaler.
 #
-# Os hiperparâmetros abaixo são conservadores (poucas árvores, profundidade
+# Os hiperparâmetros abaixo são conservadores (poucas árvores/profundidade
 # limitada) porque temos poucos dados (150 linhas) — modelos muito complexos
 # tendem a *overfitar* (memorizar o treino em vez de aprender padrões gerais).
 
@@ -94,6 +103,9 @@ models = {
         ("scaler", StandardScaler()),
         ("model", RidgeCV(alphas=np.logspace(-2, 3, 20))),
     ]),
+    "Árvore de Decisão": DecisionTreeRegressor(
+        max_depth=4, min_samples_leaf=5, random_state=RANDOM_STATE
+    ),
     "Random Forest": RandomForestRegressor(
         n_estimators=200, max_depth=6, random_state=RANDOM_STATE
     ),
@@ -189,7 +201,8 @@ test_df
 # quanto mais perto da linha, melhor o modelo.
 
 # %%
-fig, axes = plt.subplots(1, 3, figsize=(15, 5))
+fig, axes = plt.subplots(2, 2, figsize=(11, 10))
+axes = axes.flatten()
 
 y_test_stars = np.expm1(y_test)
 
@@ -211,16 +224,19 @@ plt.show()
 
 
 # %% [markdown]
-# ## 7. Importância das features (Random Forest e Gradient Boosting)
+# ## 7. Importância das features (modelos baseados em árvore)
 #
 # Modelos baseados em árvores permitem extrair quais variáveis tiveram
 # mais peso nas decisões — útil para a seção de Resultados e Discussão
-# do artigo (ex: "commits_total foi a feature mais importante...").
+# do artigo (ex: "contributors foi a feature mais importante...").
+# Comparamos a Árvore de Decisão única com os dois ensembles: se os três
+# concordarem sobre as features mais relevantes, isso reforça a robustez
+# da conclusão.
 
 # %%
-fig, axes = plt.subplots(1, 2, figsize=(14, 6))
+fig, axes = plt.subplots(1, 3, figsize=(18, 6))
 
-for ax, name in zip(axes, ["Random Forest", "Gradient Boosting"]):
+for ax, name in zip(axes, ["Árvore de Decisão", "Random Forest", "Gradient Boosting"]):
     model = models[name]
     importances = pd.Series(model.feature_importances_, index=feature_cols)
     importances = importances.sort_values(ascending=True).tail(10)
@@ -231,6 +247,35 @@ for ax, name in zip(axes, ["Random Forest", "Gradient Boosting"]):
 
 plt.tight_layout()
 plt.savefig("figures/importancia_features.png", dpi=120)
+plt.show()
+
+
+# %% [markdown]
+# ## 7.1 Visualizando a Árvore de Decisão
+#
+# Uma grande vantagem de uma árvore única (em comparação a ensembles) é
+# poder visualizar exatamente as regras de decisão aprendidas. Mostramos
+# apenas os 3 primeiros níveis para manter a figura legível — a árvore
+# completa tem `max_depth=4`.
+#
+# Cada nó mostra: a condição de divisão, o `squared_error` (erro do nó),
+# o número de amostras (`samples`) e o valor previsto (`value`, em
+# `log(stars)`).
+
+# %%
+fig, ax = plt.subplots(figsize=(20, 10))
+plot_tree(
+    models["Árvore de Decisão"],
+    feature_names=feature_cols,
+    filled=True,
+    rounded=True,
+    max_depth=3,
+    fontsize=9,
+    ax=ax,
+)
+plt.title("Árvore de Decisão — primeiros níveis (max_depth=4 no modelo completo)")
+plt.tight_layout()
+plt.savefig("figures/arvore_decisao.png", dpi=120)
 plt.show()
 
 
@@ -276,6 +321,7 @@ print(" - resultados_teste_final.csv")
 print("\nGráficos salvos em 'figures/':")
 print(" - previsto_vs_real.png")
 print(" - importancia_features.png")
+print(" - arvore_decisao.png")
 print(" - coeficientes_regressao_linear.png")
 
 print("\n=== RESUMO FINAL (conjunto de teste) ===")

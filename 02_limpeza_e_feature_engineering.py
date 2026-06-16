@@ -39,9 +39,31 @@ print("\nValores ausentes por coluna:")
 nulos = df.isnull().sum()
 print(nulos[nulos > 0])
 
+# %% [markdown]
+# ## 1.1 Estatísticas descritivas
+#
+# Resumo com medidas de tendência central (média, mediana), dispersão
+# (desvio padrão, amplitude, coeficiente de variação) e posição relativa
+# (quartis Q1/Q3) para as principais métricas numéricas. O coeficiente de
+# variação (CV = desvio padrão / média) ajuda a comparar a dispersão entre
+# variáveis com escalas muito diferentes — CV alto indica grande
+# heterogeneidade entre os repositórios.
+
 # %%
-print("\nEstatísticas das principais métricas numéricas:")
-df[["stars", "forks", "watchers", "commits_total", "contributors", "age_days"]].describe()
+metric_cols = ["stars", "forks", "commits_total", "contributors",
+                "open_issues", "age_days", "size_kb", "releases"]
+
+desc = df[metric_cols].describe().T
+desc["mediana"] = df[metric_cols].median()
+desc["amplitude"] = desc["max"] - desc["min"]
+desc["cv_pct"] = (desc["std"] / desc["mean"] * 100).round(2)
+
+desc = desc[["mean", "mediana", "std", "min", "25%", "75%", "max", "amplitude", "cv_pct"]]
+desc.columns = ["média", "mediana", "desvio_padrao", "min", "Q1", "Q3", "max", "amplitude", "CV (%)"]
+
+print(desc.round(2))
+desc.round(2).to_csv("estatisticas_descritivas.csv")
+print("\nTabela salva em 'estatisticas_descritivas.csv'")
 
 
 # %% [markdown]
@@ -72,6 +94,47 @@ print(
     f"({df['stars'].skew():.2f} -> {np.log1p(df['stars']).skew():.2f}). "
     "Por isso vamos criar a coluna 'log_stars' como variável alvo do modelo."
 )
+
+
+# %% [markdown]
+# ## 2.1 Boxplots — identificando outliers visualmente
+#
+# O boxplot mostra a mediana, os quartis (caixa) e os pontos fora de
+# 1.5×IQR (bolinhas) — uma forma direta de visualizar outliers.
+# Em `stars`, esperamos ver vários pontos extremos (cauda longa).
+# Em `log(stars)`, a distribuição deve ficar bem mais compacta.
+#
+# Também olhamos `commits_total` e `contributors` em escala log — é aqui
+# que o outlier `CleverRaven/Cataclysm-DDA` (identificado anteriormente)
+# deve aparecer destacado.
+
+# %%
+fig, axes = plt.subplots(1, 4, figsize=(14, 4))
+
+sns.boxplot(y=df["stars"], ax=axes[0], color="steelblue")
+axes[0].set_title("stars")
+
+sns.boxplot(y=np.log1p(df["stars"]), ax=axes[1], color="seagreen")
+axes[1].set_title("log(stars)")
+
+sns.boxplot(y=np.log1p(df["commits_total"]), ax=axes[2], color="darkorange")
+axes[2].set_title("log(commits_total)")
+
+sns.boxplot(y=np.log1p(df["contributors"]), ax=axes[3], color="slateblue")
+axes[3].set_title("log(contributors)")
+
+plt.tight_layout()
+plt.savefig("figures/boxplots_outliers.png", dpi=120)
+plt.show()
+
+# Identifica os outliers de 'stars' (acima de Q3 + 1.5*IQR)
+q1, q3 = df["stars"].quantile([0.25, 0.75])
+iqr = q3 - q1
+limite_superior = q3 + 1.5 * iqr
+outliers = df[df["stars"] > limite_superior][["full_name", "stars"]].sort_values("stars", ascending=False)
+print(f"Limite superior (Q3 + 1.5*IQR) para 'stars': {limite_superior:.0f}")
+print(f"Repositórios considerados outliers em 'stars' ({len(outliers)}):")
+print(outliers.to_string(index=False))
 
 
 # %% [markdown]

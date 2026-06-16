@@ -1,0 +1,70 @@
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+# Configuração visual
+sns.set_theme(style="whitegrid")
+df = pd.read_csv("cpp_game_repos_clean.csv")
+
+# Se log_stars não estiver no df, recriamos rapidamente
+if 'log_stars' not in df.columns:
+    import numpy as np
+    df['log_stars'] = np.log1p(df['stars'])
+
+# --- VISUALIZAÇÃO 1: O "Zoom" nas Estrelas ---
+# Vamos olhar como se distribuem os projetos "normais" cortando os gigantes
+limite_zoom = 1000 
+df_zoom = df[df['stars'] < limite_zoom]
+
+plt.figure(figsize=(10, 5))
+sns.histplot(df_zoom['stars'], bins=30, kde=True, color="steelblue")
+plt.title(f"Histograma: Stars (Zoom em projetos com menos de {limite_zoom} estrelas)")
+plt.xlabel("Estrelas")
+plt.ylabel("Frequência")
+plt.tight_layout()
+plt.show()
+
+# --- VISUALIZAÇÃO 2: A Escala Logarítmica (A melhor abordagem) ---
+# Aqui usamos a coluna log_stars. Veja como a distribuição fica muito mais bonita!
+plt.figure(figsize=(10, 5))
+sns.histplot(df['log_stars'], bins=30, kde=True, color="seagreen")
+plt.title("Histograma: Stars em Escala Logarítmica (log_stars)")
+plt.xlabel("Log(Estrelas)")
+plt.ylabel("Frequência")
+plt.tight_layout()
+plt.show()
+
+# --- VISUALIZAÇÃO 3: Commits Total (Separado) ---
+# Como 'commits_total' já passou por transformação logarítmica no seu script anterior, 
+# ele já tem um formato excelente.
+plt.figure(figsize=(10, 5))
+sns.histplot(df['commits_total'], bins=30, kde=True, color="darkorange")
+plt.title("Histograma: Total de Commits (Log)")
+plt.xlabel("Log(Commits)")
+plt.ylabel("Frequência")
+plt.tight_layout()
+plt.show()
+
+# --- VISUALIZAÇÃO 4: Boxplot Separado para Commits ---
+plt.figure(figsize=(10, 3))
+sns.boxplot(x=df['commits_total'], color="darkorange")
+plt.title("Boxplot: Total de Commits (Log)")
+plt.xlabel("Log(Commits)")
+plt.tight_layout()
+plt.show()
+
+# --- VISUALIZAÇÃO 5: Boxplot de Stars (Separado) ---
+fig, axes = plt.subplots(1, 2, figsize=(14, 4))
+
+# Boxplot com todos os dados (mostra todos os outliers)
+sns.boxplot(x=df['stars'], ax=axes[0], color="steelblue")
+axes[0].set_title("Boxplot: Stars (Todos os dados)")
+axes[0].set_xlabel("Estrelas")
+
+# Boxplot com o zoom (menor que 1000 estrelas)
+sns.boxplot(x=df_zoom['stars'], ax=axes[1], color="mediumturquoise")
+axes[1].set_title("Boxplot: Stars (Apenas < 1000)")
+axes[1].set_xlabel("Estrelas")
+
+plt.tight_layout()
+plt.show()
